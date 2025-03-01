@@ -1,0 +1,206 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id                     Int            @id @default(autoincrement())
+    role                   UserRole       @default(STUDENT)
+    firstName              String
+    lastName               String
+    email                  String         @unique
+    password               String
+    gender                 String
+    phoneNumber            String         @unique
+    country                String
+    city                   String?
+    mainsubjects           String[] // Subjects user teaches or wants to learn
+    university             String?
+    ifOnlyOnlineMeetings   Boolean? // If only online lessons are allowed
+    profilePic             String?
+    yearOfExperience       Int?
+    pricePerHour           Float?
+    availability           Availability?
+    stripeConnectAccountId String? // Add this field
+    sentChats              Chat[]         @relation("UserSentChats")
+    receivedChats          Chat[]         @relation("UserReceivedChats")
+    studentTeachers        MyTeacher[]    @relation("StudentTeachers")
+    tutorStudents          MyTeacher[]    @relation("TutorStudents")
+    studentLessons         MyLessons[]    @relation("StudentLessons")
+    tutorLessons           MyLessons[]    @relation("TutorLessons")
+    reviewsGiven           Review[]       @relation("UserReviewsGiven")
+    reviewsReceived        Review[]       @relation("UserReviewsReceived")
+    payments               Payment[]
+    studentBookings        Booking[]      @relation("StudentBookings")
+    tutorBookings          Booking[]      @relation("TutorBookings")
+    disputesRaised         Dispute[]      @relation("DisputesRaised")
+    disputesHandled        Dispute[]      @relation("DisputesHandled")
+    notifications          Notification[]
+    settings               MySettings?
+    Dispute                Dispute[]
+}
+
+enum UserRole {
+    STUDENT
+    TUTOR
+    ADMIN
+}
+
+model Availability {
+    id     Int  @id @default(autoincrement())
+    userId Int  @unique
+    user   User @relation(fields: [userId], references: [id])
+
+    availableDays String[] // ["Monday", "Wednesday", "Friday"]
+    timeSlots     String[] // ["10:00-12:00", "14:00-16:00"]
+}
+
+model Booking {
+    id        Int           @id @default(autoincrement())
+    studentId Int
+    tutorId   Int
+    subject   String
+    date      DateTime
+    duration  Int // In minutes
+    price     Float
+    status    BookingStatus @default(PENDING)
+    payment   Payment?
+    review    Review?       @relation(fields: [reviewId], references: [id])
+    createdAt DateTime      @default(now())
+    dispute   Dispute?
+    student   User          @relation(fields: [studentId], references: [id], name: "StudentBookings")
+    tutor     User          @relation(fields: [tutorId], references: [id], name: "TutorBookings")
+    reviewId  Int?
+
+    @@index([studentId])
+    @@index([tutorId])
+}
+
+enum BookingStatus {
+    PENDING
+    CONFIRMED
+    COMPLETED
+    CANCELED
+    REJECTED
+}
+
+model Payment {
+    id        Int           @id @default(autoincrement())
+    bookingId Int           @unique
+    method    PaymentMethod // CREDIT_CARD, PAYPAL, STRIPE
+    status    PaymentStatus @default(PENDING) // PENDING, COMPLETED, REFUNDED
+    amount    Float
+    createdAt DateTime      @default(now())
+    userId    Int
+    user      User          @relation(fields: [userId], references: [id])
+    booking   Booking       @relation(fields: [bookingId], references: [id])
+}
+
+enum PaymentMethod {
+    CREDIT_CARD
+    PAYPAL
+    STRIPE
+}
+
+enum PaymentStatus {
+    PENDING
+    COMPLETED
+    REFUNDED
+}
+
+model Review {
+    id        Int      @id @default(autoincrement())
+    studentId Int
+    tutorId   Int
+    rating    Int // 1-5 stars
+    comment   String?
+    createdAt DateTime @default(now())
+
+    student User      @relation(fields: [studentId], references: [id], name: "UserReviewsGiven")
+    tutor   User      @relation(fields: [tutorId], references: [id], name: "UserReviewsReceived")
+    Booking Booking[]
+}
+
+model Dispute {
+    id        Int           @id @default(autoincrement())
+    studentId Int
+    tutorId   Int
+    bookingId Int           @unique
+    reason    String
+    status    DisputeStatus @default(PENDING)
+    adminId   Int? // If an admin resolves the dispute
+    createdAt DateTime      @default(now())
+    booking   Booking       @relation(fields: [bookingId], references: [id])
+
+    student User  @relation(fields: [studentId], references: [id], name: "DisputesRaised")
+    tutor   User  @relation(fields: [tutorId], references: [id])
+    admin   User? @relation(fields: [adminId], references: [id], name: "DisputesHandled")
+}
+
+enum DisputeStatus {
+    PENDING
+    RESOLVED
+    REFUNDED
+    REJECTED
+}
+
+model Chat {
+    id                  Int      @id @default(autoincrement())
+    userId              Int
+    partnerOfChatUserId Int
+    message             String
+    fileAttachment      String? // Allows file sharing (PDFs, images)
+    createdAt           DateTime @default(now())
+    isPinned            Boolean  @default(false)
+    isRead              Boolean  @default(false)
+
+    sender   User @relation(fields: [userId], references: [id], name: "UserSentChats")
+    receiver User @relation(fields: [partnerOfChatUserId], references: [id], name: "UserReceivedChats")
+}
+
+model Notification {
+    id        Int              @id @default(autoincrement())
+    userId    Int
+    message   String
+    type      NotificationType
+    read      Boolean          @default(false)
+    createdAt DateTime         @default(now())
+
+    user User @relation(fields: [userId], references: [id])
+}
+
+enum NotificationType {
+    BOOKING_CONFIRMATION
+    PAYMENT_SUCCESS
+    NEW_MESSAGE
+    LESSON_REMINDER
+}
+
+model MySettings {
+    id           Int     @id @default(autoincrement())
+    userId       Int     @unique
+    user         User    @relation(fields: [userId], references: [id])
+    notification Boolean @default(true)
+    language     Boolean @default(true)
+    theme        Boolean @default(true)
+}
+
+model MyTeacher {
+    id        Int  @id @default(autoincrement())
+    studentId Int
+    tutorId   Int
+    student   User @relation(fields: [studentId], references: [id], name: "StudentTeachers")
+    tutor     User @relation(fields: [tutorId], references: [id], name: "TutorStudents")
+}
+
+model MyLessons {
+    id        Int  @id @default(autoincrement())
+    studentId Int
+    tutorId   Int
+    student   User @relation(fields: [studentId], references: [id], name: "StudentLessons")
+    tutor     User @relation(fields: [tutorId], references: [id], name: "TutorLessons")
+}
